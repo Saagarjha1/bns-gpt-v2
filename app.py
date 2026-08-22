@@ -121,29 +121,27 @@ def route_and_search(user_query: str, selected_act: str = "ALL"):
 
 
 # =====================================================================
-# LAYER 3: LLM-POWERED CONCISE LEGAL BRIEF SYNTHESIZER
+# LAYER 3: LLM-POWERED LEGAL BRIEF SYNTHESIZER
 # =====================================================================
 def generate_legal_brief(statutory_text: str) -> str:
-    """Uses Groq LLM to generate a short, clean, structured brief from statutory text."""
+    """Uses Groq LLM to generate a structured brief with flexible length based on content."""
     try:
-        prompt = f"""You are an expert legal assistant. Analyze the following Indian statutory provision text and synthesize a concise, highly readable Legal Intelligence Brief. 
+        prompt = f"""You are an expert legal assistant. Analyze the following Indian statutory provision text and synthesize a readable Legal Intelligence Brief. 
 
-Follow this exact markdown template structure:
+Follow this markdown template structure, allowing your explanations and bullet points to be as detailed or brief as necessary to fully capture the provision:
 ### ⚖️ Legal Intelligence Brief
 
 **Plain Language Explanation**
-[1-2 sentences summarizing the core meaning simply]
+[Clear summary explaining the core meaning]
 
 **Key Statutory Elements**
-- [Bullet point 1]
-- [Bullet point 2]
-- [Bullet point 3 (if applicable)]
+- [Relevant statutory element or condition]
 
 **Statutory Exceptions**
-- [Any exceptions, provisos, or conditions where this doesn't apply, or state "None specified."]
+- [Applicable exceptions or provisos, or state "None specified."]
 
 **Penalties / Consequences**
-- [Exact punishment or consequence outlined, or state "No standalone punishment prescribed."]
+- [Punishments or consequences outlined]
 
 **Statutory Text**
 > [Include the exact relevant statutory text provided below]
@@ -182,31 +180,30 @@ def process_user_request(query_text: str, act_filter: str):
         synthesized_summary = generate_legal_brief(combined_raw_text)
         return combined_raw_text, synthesized_summary
     
-    # CASE 2: FTS5 Miss -> Groq Semantic Intelligence Fallback (Now Structured!)
+    # CASE 2: FTS5 Miss -> Groq Semantic Intelligence Fallback (Structured & Flexible Length)
     else:
         try:
             prompt = f"""You are an expert Indian legal assistant specializing in the Bharatiya Nyaya Sanhita (BNS), BNSS, and BSA. 
 The user submitted a scenario or query that did not map to a single exact section keyword in the local index: "{query_text}".
 
-Analyze this scenario under Indian criminal law and synthesize a structured Legal Intelligence Brief following this exact template structure:
+Analyze this scenario under Indian criminal law and synthesize a structured Legal Intelligence Brief using your own judgment for length and depth, following this template structure:
 
 ### ⚖️ Legal Intelligence Brief (Semantic Fallback)
 
 **Plain Language Explanation**
-[1-2 sentences summarizing the legal implications of this scenario simply]
+[Explanation of the legal implications of this scenario]
 
 **Key Statutory Elements**
-- [Relevant legal principle or likely applicable provision 1]
-- [Relevant legal principle or likely applicable provision 2]
+- [Relevant legal principle or likely applicable provision]
 
 **Statutory Exceptions**
 - [Any conditions or exceptions that might apply, or state "None specified."]
 
 **Penalties / Consequences**
-- [General penalties or legal consequences under Indian law for this scenario]
+- [Legal consequences under Indian law for this scenario]
 
 **Statutory Guidance / Context**
-> [Provide a brief analytical breakdown of how Indian law treats this scenario]"""
+> [Provide analytical breakdown of how Indian law treats this scenario]"""
 
             completion = groq_client.chat.completions.create(
                 messages=[{"role": "user", "content": prompt}],
