@@ -116,61 +116,45 @@ def route_and_search(user_query: str, selected_act: str = "ALL"):
 
 
 # =====================================================================
-# LAYER 3: STRICT LEGAL BRIEF SYNTHESIZER (Recommended Format)
+# LAYER 3: LLM-POWERED CONCISE LEGAL BRIEF SYNTHESIZER
 # =====================================================================
 def generate_legal_brief(statutory_text: str) -> str:
-    """Parses statutory text with strict adherence to the recommended structured brief format."""
+    """Uses Groq Llama-3.1-8b-instant to generate a short, clean, structured brief."""
     try:
-        lines = [line.strip() for line in statutory_text.split('\n') if line.strip()]
-        
-        raw_title = next((l for l in lines if "Section" in l), "Statutory Provision")
-        clean_title = re.sub(r'[*#]', '', raw_title).replace("📌", "").strip()
-        
-        raw_chapter = next((l for l in lines if "Chapter:" in l or "CHAPTER" in l), "")
-        clean_chapter = re.sub(r'[*#]', '', raw_chapter).replace("Chapter:", "").strip()
-        
-        content_lines = [
-            l for l in lines 
-            if not l.startswith("📌") 
-            and not "Chapter:" in l 
-            and not l.startswith("**Statutory Provisions:**")
-        ]
-        
-        full_content = " ".join(content_lines) if content_lines else statutory_text
-        clean_content = re.sub(r'^\d+\.\s+[A-Za-z\s]+\.—', '', full_content).strip()
-        
-        summary_sentence = clean_content if len(clean_content) < 350 else clean_content[:347] + "..."
-        
-        punishment_keywords = ['punish', 'imprisonment', 'fine', 'penalty', 'term of', 'shall be punished']
-        has_explicit_punishment = any(kw in clean_content.lower() for kw in punishment_keywords)
-        
-        if has_explicit_punishment:
-            punishment_section_text = f"- {clean_content}"
-        else:
-            punishment_section_text = "- This section does not itself prescribe a separate standalone punishment."
+        prompt = f"""You are an expert legal assistant. Analyze the following Indian statutory provision text and synthesize a concise, highly readable Legal Intelligence Brief. 
 
-        structured_output = f"""### ⚖️ Legal Intelligence Brief
+Follow this exact markdown template structure:
+### ⚖️ Legal Intelligence Brief
 
 **Plain Language Explanation**
-This provision ({clean_title}) under **{clean_chapter if clean_chapter else 'General Provisions'}** outlines the statutory parameters: {summary_sentence}
+[1-2 sentences summarizing the core meaning simply]
 
 **Key Statutory Elements**
-- Statutory provisions and mandates as derived from the enactment text.
-- Specific behavioral or operational criteria defined under the section.
+- [Bullet point 1]
+- [Bullet point 2]
+- [Bullet point 3 (if applicable)]
 
 **Statutory Exceptions**
-- Conduct carried out for lawful prevention, detection of crime, or pursuant to legal authority as specified in the text.
+- [Any exceptions, provisos, or conditions where this doesn't apply, or state "None specified."]
 
 **Penalties / Consequences**
-{punishment_section_text}
+- [Exact punishment or consequence outlined, or state "No standalone punishment prescribed."]
 
 **Statutory Text**
-> {clean_content}"""
+> [Include the exact relevant statutory text provided below]
 
-        return structured_output
+Statutory Source Text:
+{statutory_text}"""
 
-    except Exception as runtime_err:
-        return f"**[Brief Synthesis Notice]** Processed via structural extraction due to: {runtime_err}"
+        completion = groq_client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model="llama-3.1-8b-instant",
+            temperature=0.1,
+        )
+        return completion.choices[0].message.content
+
+    except Exception as e:
+        return f"### ⚖️ Legal Intelligence Brief\n\n**Error generating brief via LLM:** {e}\n\n**Statutory Text:**\n> {statutory_text}"
 
 
 # =====================================================================
@@ -183,7 +167,7 @@ def process_user_request(query_text: str, act_filter: str):
     filter_target = "ALL" if act_filter == "All Acts" else act_filter
     retrieved_records = route_and_search(query_text, selected_act=filter_target)
     
-    # CASE 1: FTS5 Exact Match Found
+    # CASE 1: FTS5 Exact Match Found -> Send to LLM Brief Synthesizer
     if retrieved_records:
         formatted_payloads = []
         for act, section, title, chapter, text in retrieved_records:
@@ -193,26 +177,26 @@ def process_user_request(query_text: str, act_filter: str):
         synthesized_summary = generate_legal_brief(combined_raw_text)
         return combined_raw_text, synthesized_summary
     
-    # CASE 2: FTS5 Miss -> Fallback to Groq API Semantic Intelligence
+    # CASE 2: FTS5 Miss -> Fallback to Groq AI Semantic Search
     else:
         try:
             chat_completion = groq_client.chat.completions.create(
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are a legal intelligence assistant specializing in the Bharatiya Nyaya Sanhita (BNS), BNSS, and BSA. Provide precise legal context or guidance since no direct local statutory section matched the user's search query."
+                        "content": "You are a legal intelligence assistant specializing in the Bharatiya Nyaya Sanhita (BNS), BNSS, and BSA. Provide concise, clear legal guidance since no direct local statutory section matched the user's search query."
                     },
                     {
                         "role": "user",
-                        "content": f"The user searched for: '{query_text}'. No direct local statute matched this query in the FTS index. Please provide a helpful legal overview or guidance regarding this topic under Indian criminal law."
+                        "content": f"The user searched for: '{query_text}'. No direct local statute matched this query in the FTS index. Please provide a brief legal overview or guidance regarding this topic under Indian criminal law."
                     }
                 ],
-                model="llama-3.3-70b-versatile",
+                model="llama-3.1-8b-instant",
                 temperature=0.1,
             )
             groq_response = chat_completion.choices[0].message.content
             
-            fallback_raw = "⚠️ No direct keyword match found in local SQLite FTS5 index. Query routed to Groq AI Fallback."
+            fallback_raw = "⚠️ No direct keyword match found in local SQLite FTS5 index. Query routed to Groq AI Semantic Fallback."
             fallback_summary = f"### 🤖 Groq Semantic Intelligence Fallback\n\n{groq_response}"
             
             return fallback_raw, fallback_summary
@@ -223,7 +207,7 @@ def process_user_request(query_text: str, act_filter: str):
 custom_html_header = gr.HTML("""
 <div style="background: linear-gradient(135deg, #1e293b, #0f172a); padding: 30px; border-radius: 12px; color: white; text-align: center; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
     <h1 style="margin: 0; font-size: 2.2em; font-weight: 700; letter-spacing: -0.5px;">⚖️ Bharatiya Sanhita Legal Intelligence Suite</h1>
-    <p style="margin: 10px 0 0 0; color: #94a3b8; font-size: 1.1em;">High-speed local FTS5 legal retrieval, strict punishment guardrails & Groq AI fallback.</p>
+    <p style="margin: 10px 0 0 0; color: #94a3b8; font-size: 1.1em;">High-speed local FTS5 legal retrieval, LLM-powered briefs & Groq AI fallback.</p>
 </div>
 """)
 
