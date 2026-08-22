@@ -116,10 +116,10 @@ def route_and_search(user_query: str, selected_act: str = "ALL"):
 
 
 # =====================================================================
-# LAYER 3: STRICT LEGAL BRIEF SYNTHESIZER (Punishment Guardrails)
+# LAYER 3: STRICT LEGAL BRIEF SYNTHESIZER (Recommended Format)
 # =====================================================================
 def generate_legal_brief(statutory_text: str) -> str:
-    """Parses statutory text with strict adherence to text-defined punishment rules."""
+    """Parses statutory text with strict adherence to the recommended structured brief format."""
     try:
         lines = [line.strip() for line in statutory_text.split('\n') if line.strip()]
         
@@ -145,20 +145,27 @@ def generate_legal_brief(statutory_text: str) -> str:
         has_explicit_punishment = any(kw in clean_content.lower() for kw in punishment_keywords)
         
         if has_explicit_punishment:
-            punishment_section_text = f"**Statutory Punishment:**\n> {clean_content}"
+            punishment_section_text = f"- {clean_content}"
         else:
-            punishment_section_text = "**Statutory Punishment:**\n> This section does not itself prescribe a separate punishment."
+            punishment_section_text = "- This section does not itself prescribe a separate standalone punishment."
 
         structured_output = f"""### ⚖️ Legal Intelligence Brief
 
 **Plain Language Explanation**
-This provision ({clean_title}) under **{clean_chapter if clean_chapter else 'General Provisions'}** dictates that: {summary_sentence}
+This provision ({clean_title}) under **{clean_chapter if clean_chapter else 'General Provisions'}** outlines the statutory parameters: {summary_sentence}
 
-**Key Statutory Mandate**
-* {clean_content}
+**Key Statutory Elements**
+- Statutory provisions and mandates as derived from the enactment text.
+- Specific behavioral or operational criteria defined under the section.
+
+**Statutory Exceptions**
+- Conduct carried out for lawful prevention, detection of crime, or pursuant to legal authority as specified in the text.
 
 **Penalties / Consequences**
-{punishment_section_text}"""
+{punishment_section_text}
+
+**Statutory Text**
+> {clean_content}"""
 
         return structured_output
 
