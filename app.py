@@ -14,6 +14,11 @@ load_dotenv()
 groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 # =====================================================================
+# CONFIGURATION: MODEL SELECTION VARIABLE
+# =====================================================================
+MODEL_NAME = "llama-3.3-70b-versatile"
+
+# =====================================================================
 # LAYER 1: DATA INGESTION & LOCAL RETRIEVAL SUBSYSTEM (SQLite FTS5)
 # =====================================================================
 print("⏳ Initializing local dataset & search indexes from Hugging Face...")
@@ -119,7 +124,7 @@ def route_and_search(user_query: str, selected_act: str = "ALL"):
 # LAYER 3: LLM-POWERED CONCISE LEGAL BRIEF SYNTHESIZER
 # =====================================================================
 def generate_legal_brief(statutory_text: str) -> str:
-    """Uses Groq Llama-3.1-8b-instant to generate a short, clean, structured brief."""
+    """Uses Groq LLM to generate a short, clean, structured brief."""
     try:
         prompt = f"""You are an expert legal assistant. Analyze the following Indian statutory provision text and synthesize a concise, highly readable Legal Intelligence Brief. 
 
@@ -148,7 +153,7 @@ Statutory Source Text:
 
         completion = groq_client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
-            model="llama-3.1-8b-instant",
+            model=MODEL_NAME,
             temperature=0.1,
         )
         return completion.choices[0].message.content
@@ -191,7 +196,7 @@ def process_user_request(query_text: str, act_filter: str):
                         "content": f"The user searched for: '{query_text}'. No direct local statute matched this query in the FTS index. Please provide a brief legal overview or guidance regarding this topic under Indian criminal law."
                     }
                 ],
-                model="llama-3.1-8b-instant",
+                model=MODEL_NAME,
                 temperature=0.1,
             )
             groq_response = chat_completion.choices[0].message.content
