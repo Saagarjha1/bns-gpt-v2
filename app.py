@@ -147,7 +147,7 @@ def generate_legal_brief(statutory_text: str) -> str:
         if has_explicit_punishment:
             punishment_section_text = f"**Statutory Punishment:**\n> {clean_content}"
         else:
-            punishment_section_text = **Statutory Punishment:**\n> This section does not itself prescribe a separate punishment."
+            punishment_section_text = "**Statutory Punishment:**\n> This section does not itself prescribe a separate punishment."
 
         structured_output = f"""### ⚖️ Legal Intelligence Brief
 
