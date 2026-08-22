@@ -179,7 +179,6 @@ def process_user_request(query_text: str, act_filter: str):
     
     return combined_raw_text, synthesized_summary
 
-# Custom HTML Header / Wrapper Component
 custom_html_header = gr.HTML("""
 <div style="background: linear-gradient(135deg, #1e293b, #0f172a); padding: 30px; border-radius: 12px; color: white; text-align: center; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
     <h1 style="margin: 0; font-size: 2.2em; font-weight: 700; letter-spacing: -0.5px;">⚖️ Bharatiya Sanhita Legal Intelligence Suite</h1>
@@ -187,7 +186,7 @@ custom_html_header = gr.HTML("""
 </div>
 """)
 
-with gr.Blocks(title="BNS Legal Intelligence Suite", theme=gr.themes.Soft()) as demo_interface:
+with gr.Blocks(title="BNS Legal Intelligence Suite") as demo_interface:
     custom_html_header
 
     with gr.Row(equal_height=True):
@@ -231,4 +230,10 @@ with gr.Blocks(title="BNS Legal Intelligence Suite", theme=gr.themes.Soft()) as 
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 7860))
-    demo_interface.launch(server_name="0.0.0.0", server_port=port, ssr_mode=False, show_error=True)
+    demo_interface.launch(
+        server_name="0.0.0.0", 
+        server_port=port, 
+        theme=gr.themes.Soft(), 
+        share=False,
+        show_error=True
+    )
