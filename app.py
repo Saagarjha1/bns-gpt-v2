@@ -14,9 +14,9 @@ load_dotenv()
 groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 # =====================================================================
-# CONFIGURATION: MODEL SELECTION VARIABLE
+# CONFIGURATION: ACTIVE MODEL SELECTION VARIABLE
 # =====================================================================
-MODEL_NAME = "llama-3.3-70b-versatile"
+MODEL_NAME = "openai/gpt-oss-20b"
 
 # =====================================================================
 # LAYER 1: DATA INGESTION & LOCAL RETRIEVAL SUBSYSTEM (SQLite FTS5)
