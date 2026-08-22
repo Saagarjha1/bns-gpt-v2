@@ -4,6 +4,10 @@ import sqlite3
 import pandas as pd
 import gradio as gr
 from datasets import load_dataset
+from groq import Groq
+
+# Initialize Groq client securely from environment variables
+groq_client = Groq(api_key=os.environ.get("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"))
 
 # =====================================================================
 # LAYER 1: DATA INGESTION & LOCAL RETRIEVAL SUBSYSTEM (SQLite FTS5)
@@ -108,10 +112,10 @@ def route_and_search(user_query: str, selected_act: str = "ALL"):
 
 
 # =====================================================================
-# LAYER 3: ADVANCED LEGAL BRIEF SYNTHESIZER (Dynamic & Section-Aware)
+# LAYER 3: STRICT LEGAL BRIEF SYNTHESIZER (Punishment Guardrails)
 # =====================================================================
 def generate_legal_brief(statutory_text: str) -> str:
-    """Dynamically parses retrieved statutory text to build a section-aware brief without boilerplate."""
+    """Parses statutory text with strict adherence to text-defined punishment rules."""
     try:
         lines = [line.strip() for line in statutory_text.split('\n') if line.strip()]
         
@@ -132,24 +136,26 @@ def generate_legal_brief(statutory_text: str) -> str:
         clean_content = re.sub(r'^\d+\.\s+[A-Za-z\s]+\.—', '', full_content).strip()
         
         summary_sentence = clean_content if len(clean_content) < 350 else clean_content[:347] + "..."
-        has_punishment = any(keyword in clean_content.lower() for keyword in ['punish', 'imprisonment', 'fine', 'penalty', 'offence', 'term of'])
         
+        # Check for punishment explicitly in the text
+        punishment_keywords = ['punish', 'imprisonment', 'fine', 'penalty', 'term of', 'shall be punished']
+        has_explicit_punishment = any(kw in clean_content.lower() for kw in punishment_keywords)
+        
+        if has_explicit_punishment:
+            punishment_section_text = f"**Statutory Punishment:**\n> {clean_content}"
+        else:
+            punishment_section_text = "**Statutory Punishment:**\n> This section does not itself prescribe a separate punishment."
+
         structured_output = f"""### ⚖️ Legal Intelligence Brief
 
 **Plain Language Explanation**
 This provision ({clean_title}) under **{clean_chapter if clean_chapter else 'General Provisions'}** dictates that: {summary_sentence}
 
-**Key Ingredients / Conditions**
-Based strictly on the statutory text, the governing requirements for this section involve:
-* **Operational Trigger:** Directly activated when circumstances require compliance with the specific rules detailed in the provision.
-* **Statutory Mandate:** 
-  > {clean_content}"""
-
-        if has_punishment:
-            structured_output += """
+**Key Statutory Mandate**
+* {clean_content}
 
 **Penalties / Consequences**
-Non-compliance or violation of these prescribed parameters attracts statutory penalties or legal consequences as defined by the governing framework."""
+{punishment_section_text}"""
 
         return structured_output
 
@@ -158,7 +164,7 @@ Non-compliance or violation of these prescribed parameters attracts statutory pe
 
 
 # =====================================================================
-# LAYER 4: CONTROLLER & WEB PRESENTATION LAYER (Gradio + Custom HTML)
+# LAYER 4: CONTROLLER, FALLBACK & PRESENTATION LAYER
 # =====================================================================
 def process_user_request(query_text: str, act_filter: str):
     if not query_text.strip():
@@ -167,22 +173,47 @@ def process_user_request(query_text: str, act_filter: str):
     filter_target = "ALL" if act_filter == "All Acts" else act_filter
     retrieved_records = route_and_search(query_text, selected_act=filter_target)
     
-    if not retrieved_records:
-        return "❌ No exact or matching provisions found within the local SQLite FTS index.", "Summary unavailable due to empty retrieval."
+    # CASE 1: FTS5 Exact Match Found
+    if retrieved_records:
+        formatted_payloads = []
+        for act, section, title, chapter, text in retrieved_records:
+            formatted_payloads.append(f"📌 **[{act}] Section {section}: {title}**\n**Chapter:** {chapter}\n\n**Statutory Provisions:**\n{text}")
+        
+        combined_raw_text = "\n\n---\n\n".join(formatted_payloads)
+        synthesized_summary = generate_legal_brief(combined_raw_text)
+        return combined_raw_text, synthesized_summary
     
-    formatted_payloads = []
-    for act, section, title, chapter, text in retrieved_records:
-        formatted_payloads.append(f"📌 **[{act}] Section {section}: {title}**\n**Chapter:** {chapter}\n\n**Statutory Provisions:**\n{text}")
-    
-    combined_raw_text = "\n\n---\n\n".join(formatted_payloads)
-    synthesized_summary = generate_legal_brief(combined_raw_text)
-    
-    return combined_raw_text, synthesized_summary
+    # CASE 2: FTS5 Miss -> Fallback to Groq API Semantic Intelligence
+    else:
+        try:
+            chat_completion = groq_client.chat.completions.create(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a legal intelligence assistant specializing in the Bharatiya Nyaya Sanhita (BNS), BNSS, and BSA. Provide precise legal context or guidance since no direct local statutory section matched the user's search query."
+                    },
+                    {
+                        "role": "user",
+                        "content": f"The user searched for: '{query_text}'. No direct local statute matched this query in the FTS index. Please provide a helpful legal overview or guidance regarding this topic under Indian criminal law."
+                    }
+                ],
+                model="llama-3.3-70b-versatile",
+                temperature=0.1,
+            )
+            groq_response = chat_completion.choices[0].message.content
+            
+            fallback_raw = "⚠️ No direct keyword match found in local SQLite FTS5 index. Query routed to Groq AI Fallback."
+            fallback_summary = f"### 🤖 Groq Semantic Intelligence Fallback\n\n{groq_response}"
+            
+            return fallback_raw, fallback_summary
+            
+        except Exception as e:
+            return "❌ No matching provisions found locally.", f"⚠️ Fallback API Error: {e}"
 
 custom_html_header = gr.HTML("""
 <div style="background: linear-gradient(135deg, #1e293b, #0f172a); padding: 30px; border-radius: 12px; color: white; text-align: center; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
     <h1 style="margin: 0; font-size: 2.2em; font-weight: 700; letter-spacing: -0.5px;">⚖️ Bharatiya Sanhita Legal Intelligence Suite</h1>
-    <p style="margin: 10px 0 0 0; color: #94a3b8; font-size: 1.1em;">High-speed local FTS5 legal retrieval & section-aware automated briefing engine.</p>
+    <p style="margin: 10px 0 0 0; color: #94a3b8; font-size: 1.1em;">High-speed local FTS5 legal retrieval, strict punishment guardrails & Groq AI fallback.</p>
 </div>
 """)
 
@@ -193,7 +224,7 @@ with gr.Blocks(title="BNS Legal Intelligence Suite") as demo_interface:
         with gr.Column(scale=4):
             user_input_box = gr.Textbox(
                 label="🔍 Statutory Search Query / Section",
-                placeholder="e.g., 'BNS Section 34', 'BNSS 67', or 'Organised crime'",
+                placeholder="e.g., 'BNS Section 34', 'BNSS 67', or conceptual legal queries",
                 lines=2
             )
         with gr.Column(scale=1):
@@ -212,7 +243,7 @@ with gr.Blocks(title="BNS Legal Intelligence Suite") as demo_interface:
             )
         with gr.Column(scale=1):
             raw_text_textbox = gr.Textbox(
-                label="📂 Local FTS5 Dataset Raw Text",
+                label="📂 Local FTS5 Dataset / Fallback Raw Text",
                 interactive=False,
                 lines=15
             )
