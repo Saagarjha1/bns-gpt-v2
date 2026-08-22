@@ -4,10 +4,14 @@ import sqlite3
 import pandas as pd
 import gradio as gr
 from datasets import load_dataset
+from dotenv import load_dotenv
 from groq import Groq
 
-# Initialize Groq client securely from environment variables
-groq_client = Groq(api_key=os.environ.get("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"))
+# Load environment variables from .env file (if present locally)
+load_dotenv()
+
+# Initialize Groq client securely from environment
+groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 # =====================================================================
 # LAYER 1: DATA INGESTION & LOCAL RETRIEVAL SUBSYSTEM (SQLite FTS5)
@@ -137,14 +141,13 @@ def generate_legal_brief(statutory_text: str) -> str:
         
         summary_sentence = clean_content if len(clean_content) < 350 else clean_content[:347] + "..."
         
-        # Check for punishment explicitly in the text
         punishment_keywords = ['punish', 'imprisonment', 'fine', 'penalty', 'term of', 'shall be punished']
         has_explicit_punishment = any(kw in clean_content.lower() for kw in punishment_keywords)
         
         if has_explicit_punishment:
             punishment_section_text = f"**Statutory Punishment:**\n> {clean_content}"
         else:
-            punishment_section_text = "**Statutory Punishment:**\n> This section does not itself prescribe a separate punishment."
+            punishment_section_text = **Statutory Punishment:**\n> This section does not itself prescribe a separate punishment."
 
         structured_output = f"""### ⚖️ Legal Intelligence Brief
 
