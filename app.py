@@ -124,7 +124,7 @@ def route_and_search(user_query: str, selected_act: str = "ALL"):
 # LAYER 3: LLM-POWERED CONCISE LEGAL BRIEF SYNTHESIZER
 # =====================================================================
 def generate_legal_brief(statutory_text: str) -> str:
-    """Uses Groq LLM to generate a short, clean, structured brief."""
+    """Uses Groq LLM to generate a short, clean, structured brief from statutory text."""
     try:
         prompt = f"""You are an expert legal assistant. Analyze the following Indian statutory provision text and synthesize a concise, highly readable Legal Intelligence Brief. 
 
@@ -182,29 +182,41 @@ def process_user_request(query_text: str, act_filter: str):
         synthesized_summary = generate_legal_brief(combined_raw_text)
         return combined_raw_text, synthesized_summary
     
-    # CASE 2: FTS5 Miss -> Fallback to Groq AI Semantic Search
+    # CASE 2: FTS5 Miss -> Groq Semantic Intelligence Fallback (Now Structured!)
     else:
         try:
-            chat_completion = groq_client.chat.completions.create(
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a legal intelligence assistant specializing in the Bharatiya Nyaya Sanhita (BNS), BNSS, and BSA. Provide concise, clear legal guidance since no direct local statutory section matched the user's search query."
-                    },
-                    {
-                        "role": "user",
-                        "content": f"The user searched for: '{query_text}'. No direct local statute matched this query in the FTS index. Please provide a brief legal overview or guidance regarding this topic under Indian criminal law."
-                    }
-                ],
+            prompt = f"""You are an expert Indian legal assistant specializing in the Bharatiya Nyaya Sanhita (BNS), BNSS, and BSA. 
+The user submitted a scenario or query that did not map to a single exact section keyword in the local index: "{query_text}".
+
+Analyze this scenario under Indian criminal law and synthesize a structured Legal Intelligence Brief following this exact template structure:
+
+### ⚖️ Legal Intelligence Brief (Semantic Fallback)
+
+**Plain Language Explanation**
+[1-2 sentences summarizing the legal implications of this scenario simply]
+
+**Key Statutory Elements**
+- [Relevant legal principle or likely applicable provision 1]
+- [Relevant legal principle or likely applicable provision 2]
+
+**Statutory Exceptions**
+- [Any conditions or exceptions that might apply, or state "None specified."]
+
+**Penalties / Consequences**
+- [General penalties or legal consequences under Indian law for this scenario]
+
+**Statutory Guidance / Context**
+> [Provide a brief analytical breakdown of how Indian law treats this scenario]"""
+
+            completion = groq_client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
                 model=MODEL_NAME,
                 temperature=0.1,
             )
-            groq_response = chat_completion.choices[0].message.content
+            groq_response = completion.choices[0].message.content
             
-            fallback_raw = "⚠️ No direct keyword match found in local SQLite FTS5 index. Query routed to Groq AI Semantic Fallback."
-            fallback_summary = f"### 🤖 Groq Semantic Intelligence Fallback\n\n{groq_response}"
-            
-            return fallback_raw, fallback_summary
+            fallback_raw = "⚠️ No direct keyword match found in local SQLite FTS5 index. Query routed to Groq AI Semantic Fallback and structured."
+            return fallback_raw, groq_response
             
         except Exception as e:
             return "❌ No matching provisions found locally.", f"⚠️ Fallback API Error: {e}"
@@ -222,8 +234,8 @@ with gr.Blocks(title="BNS Legal Intelligence Suite") as demo_interface:
     with gr.Row(equal_height=True):
         with gr.Column(scale=4):
             user_input_box = gr.Textbox(
-                label="🔍 Statutory Search Query / Section",
-                placeholder="e.g., 'BNS Section 34', 'BNSS 67', or conceptual legal queries",
+                label="🔍 Statutory Search Query / Section / Scenario",
+                placeholder="e.g., 'BNS Section 34', or describe a case scenario",
                 lines=2
             )
         with gr.Column(scale=1):
