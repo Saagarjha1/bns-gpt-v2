@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sign In - BNS Legal Intelligence Desk</title>
+    <meta name="description" content="Sign in to access an Indian police and legal intelligence workspace for BNS, BNSS, and BSA research." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg: #f7f8fa;
+            --bg-soft: #f1f4f7;
+            --surface: rgba(255, 255, 255, 0.82);
+            --surface-strong: rgba(255, 255, 255, 0.92);
+            --ink: #17212b;
+            --ink-soft: #263746;
+            --muted: #5f7080;
+            --line: rgba(23, 33, 43, 0.08);
+            --navy: #17365d;
+            --royal: #214d87;
+            --khaki: #b79c62;
+            --gold: #cfb06f;
+            --shadow: 0 30px 70px rgba(23, 33, 43, 0.14);
+        }
+
+        body {
+            font-family: "Source Sans 3", sans-serif;
+            background:
+                radial-gradient(circle at top left, rgba(33, 77, 135, 0.12), transparent 28%),
+                linear-gradient(180deg, #fbfcfd 0%, #f3f6f9 100%);
+            color: var(--ink);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .page-shell {
+            position: relative;
+            min-height: 100vh;
+            display: grid;
+            grid-template-columns: minmax(0, 1.45fr) minmax(380px, 520px);
+            align-items: stretch;
+        }
+
+        .photo-stage {
+            position: relative;
+            isolation: isolate;
+            overflow: hidden;
+            min-height: 100vh;
+        }
+
+        .photo-stage::before {
+            content: "";
+            position: absolute;
+            inset: 24px 0 24px 24px;
+            border-radius: 28px;
+            background:
+                linear-gradient(90deg, rgba(247, 248, 250, 0.00) 0%, rgba(247, 248, 250, 0.16) 48%, rgba(247, 248, 250, 0.44) 73%, rgba(247, 248, 250, 0.78) 88%, rgba(247, 248, 250, 0.90) 100%),
+                url('/static/images/login_bg.jpg') center center / cover no-repeat;
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.35);
+            z-index: -3;
+        }
+
+        .photo-stage::after {
+            content: "";
+            position: absolute;
+            inset: 24px 0 24px 24px;
+            border-radius: 28px;
+            background:
+                linear-gradient(135deg, rgba(23, 54, 93, 0.12), transparent 34%, rgba(183, 156, 98, 0.14) 100%),
+                linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.18));
+            z-index: -2;
+        }
+
+        .photo-grid {
+            position: absolute;
+            inset: 24px 0 24px 24px;
+            border-radius: 28px;
+            background-image:
+                linear-gradient(rgba(23, 54, 93, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(23, 54, 93, 0.05) 1px, transparent 1px);
+            background-size: 52px 52px;
+            mask-image: linear-gradient(90deg, rgba(0,0,0,0.72), transparent 92%);
+            z-index: -1;
+        }
+
+        .photo-copy {
+            max-width: 650px;
+            padding: 52px 48px 44px;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            width: fit-content;
+            padding: 8px 14px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.72);
+            border: 1px solid rgba(23, 54, 93, 0.08);
+            color: var(--navy);
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            box-shadow: 0 8px 24px rgba(23, 33, 43, 0.08);
+        }
+
+        .eyebrow .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: linear-gradient(180deg, var(--khaki), var(--gold));
+        }
+
+        .photo-copy h1 {
+            font-family: "Cormorant Garamond", serif;
+            font-size: clamp(3rem, 4vw, 4.5rem);
+            line-height: 0.92;
+            letter-spacing: -0.03em;
+            max-width: 640px;
+            color: #0f1d2c;
+            text-wrap: balance;
+            text-shadow: 0 1px 0 rgba(255,255,255,0.35);
+        }
+
+        .photo-copy p {
+            max-width: 560px;
+            font-size: 18px;
+            line-height: 1.6;
+            color: #223546;
+            font-weight: 600;
+        }
+
+        .signal-row {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 14px;
+            margin-top: 8px;
+            max-width: 620px;
+        }
+
+        .signal-card {
+            padding: 16px 16px 14px;
+            border-radius: 18px;
+            background: rgba(255,255,255,0.65);
+            border: 1px solid rgba(23, 54, 93, 0.08);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 10px 30px rgba(23, 33, 43, 0.06);
+        }
+
+        .signal-card strong {
+            display: block;
+            font-size: 13px;
+            color: var(--navy);
+            margin-bottom: 6px;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+        }
+
+        .signal-card span {
+            font-size: 14px;
+            line-height: 1.45;
+            color: #334657;
+            font-weight: 600;
+        }
+
+        .photo-brief {
+            position: absolute;
+            right: 40px;
+            top: 120px;
+            width: min(300px, 28vw);
+            padding: 18px;
+            border-radius: 24px;
+            background: rgba(255, 255, 255, 0.62);
+            border: 1px solid rgba(23, 54, 93, 0.10);
+            box-shadow: 0 22px 44px rgba(23, 33, 43, 0.10);
+            backdrop-filter: blur(18px);
+            z-index: 2;
+        }
+
+        .photo-brief h3 {
+            font-size: 13px;
+            font-weight: 800;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: #17365d;
+            margin-bottom: 12px;
+        }
+
+        .photo-brief-list {
+            display: grid;
+            gap: 10px;
+        }
+
+        .photo-brief-item {
+            padding: 12px 14px;
+            border-radius: 16px;
+            background: rgba(255,255,255,0.76);
+            border: 1px solid rgba(23,54,93,0.08);
+        }
+
+        .photo-brief-item strong {
+            display: block;
+            font-size: 14px;
+            color: #14283d;
+            margin-bottom: 4px;
+        }
+
+        .photo-brief-item span {
+            display: block;
+            font-size: 13px;
+            line-height: 1.45;
+            color: #385062;
+            font-weight: 600;
+        }
+
+        .panel-wrap {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px 24px 24px 0;
+        }
+
+        .auth-panel {
+            width: 100%;
+            max-width: 500px;
+            background: var(--surface);
+            border: 1px solid rgba(23, 54, 93, 0.08);
+            border-radius: 30px;
+            padding: 34px;
+            backdrop-filter: blur(18px);
+            box-shadow: var(--shadow);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .auth-panel::before {
+            content: "";
+            position: absolute;
+            inset: 0 0 auto;
+            height: 5px;
+            background: linear-gradient(90deg, rgba(255,153,51,0.9), rgba(255,255,255,0.95) 52%, rgba(19,136,8,0.75));
+        }
+
+        .auth-panel::after {
+            content: "";
+            position: absolute;
+            right: -70px;
+            top: -80px;
+            width: 220px;
+            height: 220px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(207, 176, 111, 0.18), transparent 70%);
+            pointer-events: none;
+        }
+
+        .panel-head {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 22px;
+        }
+
+        .seal {
+            width: 68px;
+            height: 68px;
+            border-radius: 20px;
+            display: grid;
+            place-items: center;
+            background:
+                linear-gradient(135deg, rgba(183,156,98,0.16), rgba(23,54,93,0.08)),
+                rgba(255,255,255,0.85);
+            border: 1px solid rgba(183,156,98,0.2);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.8);
+            flex-shrink: 0;
+        }
+
+        .seal svg {
+            width: 42px;
+            height: 42px;
+        }
+
+        .panel-head-text h2 {
+            font-family: "Cormorant Garamond", serif;
+            font-size: 35px;
+            line-height: 0.95;
+            color: #122235;
+        }
+
+        .panel-head-text p {
+            margin-top: 8px;
+            color: #445869;
+            font-size: 15px;
+            line-height: 1.45;
+            font-weight: 600;
+        }
+
+        .trust-band {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 22px;
+        }
+
+        .trust-pill {
+            padding: 9px 12px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--navy);
+            background: rgba(255,255,255,0.72);
+            border: 1px solid rgba(23,54,93,0.08);
+        }
+
+        .feature-list {
+            display: grid;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .feature {
+            display: grid;
+            grid-template-columns: 44px 1fr;
+            gap: 14px;
+            align-items: start;
+            padding: 14px 14px 14px 12px;
+            border-radius: 18px;
+            background: var(--surface-strong);
+            border: 1px solid var(--line);
+        }
+
+        .feature-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 14px;
+            display: grid;
+            place-items: center;
+            background: linear-gradient(145deg, rgba(33,77,135,0.1), rgba(183,156,98,0.12));
+            color: var(--royal);
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .feature h3 {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--ink);
+            margin-bottom: 3px;
+        }
+
+        .feature p {
+            font-size: 14px;
+            line-height: 1.5;
+            color: #3d5162;
+            font-weight: 600;
+        }
+
+        .error-banner {
+            display: {% if error %}flex{% else %}none{% endif %};
+            gap: 10px;
+            align-items: flex-start;
+            margin-bottom: 18px;
+            padding: 14px 16px;
+            border-radius: 16px;
+            background: rgba(181, 43, 43, 0.08);
+            border: 1px solid rgba(181, 43, 43, 0.18);
+            color: #8b2e2e;
+            font-size: 14px;
+        }
+
+        .sign-in-label {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+            color: #6d7b89;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            font-weight: 700;
+        }
+
+        .sign-in-label::before,
+        .sign-in-label::after {
+            content: "";
+            height: 1px;
+            flex: 1;
+            background: linear-gradient(90deg, transparent, rgba(23,54,93,0.14), transparent);
+        }
+
+        .google-btn {
+            width: 100%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 16px 20px;
+            border-radius: 18px;
+            text-decoration: none;
+            color: #132234;
+            background: linear-gradient(180deg, #ffffff, #f6f8fb);
+            border: 1px solid rgba(23,54,93,0.1);
+            box-shadow:
+                0 18px 40px rgba(23, 33, 43, 0.1),
+                inset 0 1px 0 rgba(255,255,255,0.96);
+            font-size: 16px;
+            font-weight: 700;
+            transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+        }
+
+        .google-btn:hover {
+            transform: translateY(-2px);
+            border-color: rgba(33,77,135,0.18);
+            box-shadow:
+                0 24px 46px rgba(23, 33, 43, 0.14),
+                0 0 0 6px rgba(33,77,135,0.04);
+        }
+
+        .google-icon {
+            width: 20px;
+            height: 20px;
+            flex-shrink: 0;
+        }
+
+        .panel-foot {
+            margin-top: 18px;
+            color: #445869;
+            font-size: 13px;
+            line-height: 1.55;
+            font-weight: 600;
+        }
+
+        .panel-foot strong {
+            color: var(--navy);
+        }
+
+        .corner-note {
+            position: fixed;
+            left: 32px;
+            bottom: 22px;
+            display: inline-flex;
+            gap: 12px;
+            align-items: center;
+            color: #62717f;
+            font-size: 12px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            font-weight: 700;
+        }
+
+        .flag-line {
+            width: 42px;
+            height: 4px;
+            border-radius: 999px;
+            background: linear-gradient(90deg, rgba(255,153,51,0.9), rgba(255,255,255,0.95) 52%, rgba(19,136,8,0.82));
+            box-shadow: 0 0 0 1px rgba(23,54,93,0.04);
+        }
+
+        @media (max-width: 1120px) {
+            .page-shell {
+                grid-template-columns: 1fr;
+            }
+
+            .photo-stage {
+                min-height: auto;
+                padding: 24px 24px 0;
+            }
+
+            .photo-stage::before,
+            .photo-stage::after,
+            .photo-grid {
+                inset: 24px;
+            }
+
+            .photo-copy {
+                padding: 52px 28px 160px;
+            }
+
+            .photo-brief {
+                right: 28px;
+                top: auto;
+                bottom: 32px;
+                width: min(360px, calc(100% - 56px));
+            }
+
+            .panel-wrap {
+                padding: 0 24px 32px;
+                margin-top: -120px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .photo-copy {
+                padding: 40px 22px 132px;
+            }
+
+            .photo-copy h1 {
+                font-size: 2.5rem;
+            }
+
+            .photo-copy p {
+                font-size: 16px;
+            }
+
+            .photo-brief {
+                position: relative;
+                right: auto;
+                bottom: auto;
+                top: auto;
+                width: 100%;
+                margin: 0 22px 20px;
+            }
+
+            .signal-row {
+                grid-template-columns: 1fr;
+            }
+
+            .panel-wrap {
+                margin-top: -96px;
+                padding: 0 16px 24px;
+            }
+
+            .auth-panel {
+                padding: 26px 20px;
+                border-radius: 24px;
+            }
+
+            .panel-head {
+                align-items: flex-start;
+            }
+
+            .corner-note {
+                position: static;
+                padding: 0 16px 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main class="page-shell">
+        <section class="photo-stage">
+            <div class="photo-grid"></div>
+
+            <div class="photo-copy">
+                <div class="eyebrow">
+                    <span class="dot"></span>
+                    BNS Legal Intelligence Desk
+                </div>
+
+                <h1>Indian criminal law research for police, courts, and investigators.</h1>
+
+                <p>
+                    A premium legal AI workspace shaped around Bharatiya Nyaya Sanhita,
+                    Bharatiya Nagarik Suraksha Sanhita, and Bharatiya Sakshya Adhiniyam.
+                    Designed to feel like a modern legal research platform with the calm
+                    discipline of an Indian police command environment.
+                </p>
+
+                <div class="signal-row">
+                    <div class="signal-card">
+                        <strong>Legal Research</strong>
+                        <span>Search sections, compare provisions, and understand criminal law language quickly.</span>
+                    </div>
+                    <div class="signal-card">
+                        <strong>Investigation Ready</strong>
+                        <span>Built for case review, offence analysis, procedure lookup, and evidence questions.</span>
+                    </div>
+                    <div class="signal-card">
+                        <strong>Institutional Design</strong>
+                        <span>Light, professional visuals inspired by Indian courts, files, and police workflow.</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="photo-brief">
+                <h3>Operational Snapshot</h3>
+                <div class="photo-brief-list">
+                    <div class="photo-brief-item">
+                        <strong>BNS</strong>
+                        <span>Substantive criminal law analysis for offences, punishments, and ingredients.</span>
+                    </div>
+                    <div class="photo-brief-item">
+                        <strong>BNSS + BSA</strong>
+                        <span>Procedure and evidence support for arrest, trial flow, statements, and proof.</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="panel-wrap">
+            <div class="auth-panel">
+                <div class="panel-head">
+                    <div class="seal" aria-hidden="true">
+                        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="50" cy="50" r="43" fill="none" stroke="rgba(183,156,98,0.35)" stroke-width="2"/>
+                            <g stroke="rgba(33,77,135,0.55)" stroke-width="1.15" stroke-linecap="round">
+                                <line x1="50" y1="50" x2="50" y2="12"/>
+                                <line x1="50" y1="50" x2="59.8" y2="13.3"/>
+                                <line x1="50" y1="50" x2="68.7" y2="16.9"/>
+                                <line x1="50" y1="50" x2="75.7" y2="22.9"/>
+                                <line x1="50" y1="50" x2="80.4" y2="30.8"/>
+                                <line x1="50" y1="50" x2="82.7" y2="40.3"/>
+                                <line x1="50" y1="50" x2="88" y2="50"/>
+                                <line x1="50" y1="50" x2="82.7" y2="59.7"/>
+                                <line x1="50" y1="50" x2="80.4" y2="69.2"/>
+                                <line x1="50" y1="50" x2="75.7" y2="77.1"/>
+                                <line x1="50" y1="50" x2="68.7" y2="83.1"/>
+                                <line x1="50" y1="50" x2="59.8" y2="86.7"/>
+                                <line x1="50" y1="50" x2="50" y2="88"/>
+                                <line x1="50" y1="50" x2="40.2" y2="86.7"/>
+                                <line x1="50" y1="50" x2="31.3" y2="83.1"/>
+                                <line x1="50" y1="50" x2="24.3" y2="77.1"/>
+                                <line x1="50" y1="50" x2="19.6" y2="69.2"/>
+                                <line x1="50" y1="50" x2="17.3" y2="59.7"/>
+                                <line x1="50" y1="50" x2="12" y2="50"/>
+                                <line x1="50" y1="50" x2="17.3" y2="40.3"/>
+                                <line x1="50" y1="50" x2="19.6" y2="30.8"/>
+                                <line x1="50" y1="50" x2="24.3" y2="22.9"/>
+                                <line x1="50" y1="50" x2="31.3" y2="16.9"/>
+                                <line x1="50" y1="50" x2="40.2" y2="13.3"/>
+                            </g>
+                            <circle cx="50" cy="50" r="7" fill="rgba(183,156,98,0.15)" stroke="rgba(183,156,98,0.55)" stroke-width="1.4"/>
+                            <circle cx="50" cy="50" r="2.6" fill="rgba(23,54,93,0.8)"/>
+                        </svg>
+                    </div>
+
+                    <div class="panel-head-text">
+                        <h2>Secure Access</h2>
+                        <p>Enter the legal intelligence workspace used for BNS, BNSS, and BSA query support.</p>
+                    </div>
+                </div>
+
+                <div class="trust-band">
+                    <span class="trust-pill">Police and legal workflow</span>
+                    <span class="trust-pill">Google-authenticated entry</span>
+                    <span class="trust-pill">Saved research sessions</span>
+                </div>
+
+                {% if error %}
+                <div class="error-banner">
+                    <span>&#9888;</span>
+                    <span>{{ error }}</span>
+                </div>
+                {% endif %}
+
+                <div class="feature-list">
+                    <div class="feature">
+                        <div class="feature-icon">&#9878;</div>
+                        <div>
+                            <h3>BNS legal brief generation</h3>
+                            <p>Get structured plain-language explanations, statutory elements, exceptions, and consequences.</p>
+                        </div>
+                    </div>
+
+                    <div class="feature">
+                        <div class="feature-icon">&#128269;</div>
+                        <div>
+                            <h3>Fast statutory lookup</h3>
+                            <p>Search BNS, BNSS, and BSA provisions with a workflow suited to police and legal review.</p>
+                        </div>
+                    </div>
+
+                    <div class="feature">
+                        <div class="feature-icon">&#128451;</div>
+                        <div>
+                            <h3>Persistent investigation history</h3>
+                            <p>Return to past case questions, legal scenarios, and ongoing research sessions from one workspace.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sign-in-label">Authorized Sign In</div>
+
+                <a id="google-signin-btn" href="/auth/google" class="google-btn">
+                    <svg class="google-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                    </svg>
+                    Continue with Google
+                </a>
+
+                <p class="panel-foot">
+                    <strong>Private research workspace.</strong> Sessions are tied to your account so officers,
+                    advocates, researchers, and students can continue work without losing context.
+                </p>
+            </div>
+        </section>
+    </main>
+
+    <div class="corner-note">
+        <span class="flag-line" aria-hidden="true"></span>
+        BNS-GPT v2 Legal Intelligence
+    </div>
+</body>
+</html>

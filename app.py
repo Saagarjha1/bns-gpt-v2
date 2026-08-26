@@ -1,278 +1,260 @@
-import os
-import re
-import sqlite3
-import pandas as pd
-import gradio as gr
-from datasets import load_dataset
-from dotenv import load_dotenv
-from groq import Groq
+"""
+FastAPI backend for the BNS Legal Intelligence application.
 
-# Load environment variables from .env file (if present locally)
+This version exposes JSON APIs for a separate Next.js frontend.
+"""
+
+import os
+from urllib.parse import quote
+
+from authlib.integrations.starlette_client import OAuth
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+from starlette.middleware.sessions import SessionMiddleware
+
+from auth import create_session_token, decode_session_token
+from database import (
+    create_chat_session,
+    get_or_create_user,
+    get_session_messages,
+    get_user_by_id,
+    get_user_sessions,
+    delete_chat_session,
+    save_message,
+    update_session_title,
+)
+from legal_ai import build_statutory_context, generate_response, route_and_search
+
 load_dotenv()
 
-# Initialize Groq client securely from environment
-groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+SECRET_KEY = os.environ.get("SECRET_KEY", "change-this-secret-in-production")
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000").rstrip("/")
 
-# =====================================================================
-# CONFIGURATION: ACTIVE MODEL SELECTION VARIABLE
-# =====================================================================
-MODEL_NAME = "openai/gpt-oss-20b"
+if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+    print("[WARNING] GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET not set. OAuth will not work.")
 
-# =====================================================================
-# LAYER 1: DATA INGESTION & LOCAL RETRIEVAL SUBSYSTEM (SQLite FTS5)
-# =====================================================================
-print("⏳ Initializing local dataset & search indexes from Hugging Face...")
-dataset = load_dataset("GSMS-B/indian-legal-sections-bns-bnss-bsa-2023", token=False)
-full_df = dataset['train'].to_pandas()
-full_df['clean_act'] = full_df['act'].astype(str).str.strip().str.upper()
+app = FastAPI(title="BNS Legal Intelligence API")
+app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[FRONTEND_URL, "http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
-bns_df = full_df[full_df['clean_act'].str.contains('BNS', na=False) & ~full_df['clean_act'].str.contains('BNSS', na=False)].reset_index(drop=True)
-bnss_df = full_df[full_df['clean_act'].str.contains('BNSS', na=False)].reset_index(drop=True)
-bsa_df = full_df[full_df['clean_act'].str.contains('BSA', na=False)].reset_index(drop=True)
+oauth = OAuth()
+oauth.register(
+    name="google",
+    client_id=GOOGLE_CLIENT_ID,
+    client_secret=GOOGLE_CLIENT_SECRET,
+    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+    client_kwargs={"scope": "openid email profile", "prompt": "select_account"},
+)
 
-DB_NAME = "statutory_search.db"
-conn = sqlite3.connect(DB_NAME, check_same_thread=False)
-cursor = conn.cursor()
 
-acts_registry = {'bns_fts': bns_df, 'bnss_fts': bnss_df, 'bsa_fts': bsa_df}
+class QueryRequest(BaseModel):
+    message: str
+    act_filter: str = "All Acts"
+    session_id: str | None = None
 
-for table_name, df in acts_registry.items():
-    cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
-    cursor.execute(f"""
-        CREATE VIRTUAL TABLE {table_name} USING fts5(
-            chunk_id, section_number, section_title, chapter, text, tokenize = 'unicode61'
+
+def get_current_user_or_401(request: Request) -> tuple[str, dict]:
+    token = request.cookies.get("app_session")
+    user_id = decode_session_token(token) if token else None
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+
+    user = get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="User session is invalid.")
+    return user_id, user
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
+@app.get("/")
+async def root():
+    return RedirectResponse(url=FRONTEND_URL, status_code=302)
+
+
+@app.get("/auth/google")
+async def login_with_google(request: Request):
+    redirect_uri = str(request.base_url).rstrip("/") + "/auth/callback"
+    try:
+        return await oauth.google.authorize_redirect(request, redirect_uri)
+    except Exception as exc:
+        message = quote(str(exc))
+        return RedirectResponse(
+            url=f"{FRONTEND_URL}/?error=oauth&message={message}",
+            status_code=302,
         )
-    """)
-    for _, row in df.iterrows():
-        cursor.execute(f"""
-            INSERT INTO {table_name} (chunk_id, section_number, section_title, chapter, text)
-            VALUES (?, ?, ?, ?, ?)
-        """, (
-            str(row.get('chunk_id', '') or '').strip(),
-            str(row.get('section_number', '') or '').strip(),
-            str(row.get('section_title', '') or '').strip(),
-            str(row.get('chapter', '') or '').strip(),
-            str(row.get('text', '') or '').strip()
-        ))
-
-conn.commit()
-print("🚀 Local SQLite FTS5 virtual tables built successfully from Hugging Face dataset.\n")
 
 
-# =====================================================================
-# LAYER 2: QUERY ROUTING & MATCHING ENGINE
-# =====================================================================
-def execute_fts_query(table_name: str, clean_query: str, section_num: str = None):
-    cur = conn.cursor()
-    if section_num:
-        cur.execute(f"SELECT section_number, section_title, chapter, text FROM {table_name} WHERE section_number = ?", (section_num,))
-        records = cur.fetchall()
-        if records:
-            return records
+@app.get("/auth/callback")
+async def google_auth_callback(request: Request):
+    try:
+        token = await oauth.google.authorize_access_token(request)
+    except Exception as exc:
+        return RedirectResponse(url=f"{FRONTEND_URL}/?error=oauth&message={exc}", status_code=302)
 
-    tokens = [w for w in clean_query.split() if len(w) > 2 and w.lower() not in ['section', 'sec', 'bns', 'bnss', 'bsa', 'under', 'for', 'the', 'act']]
-    if not tokens:
-        return []
-
-    cleaned_terms = [re.sub(r"[^\w]", "", t) for t in tokens]
-    fts_expression = " AND ".join([f'"{term}*"' for term in cleaned_terms if term])
-    
-    if not fts_expression:
-        return []
+    user_info = token.get("userinfo")
+    if not user_info:
+        return RedirectResponse(url=f"{FRONTEND_URL}/?error=userinfo", status_code=302)
 
     try:
-        cur.execute(f"SELECT section_number, section_title, chapter, text FROM {table_name} WHERE {table_name} MATCH ? LIMIT 2", (fts_expression,))
-        records = cur.fetchall()
-    except Exception:
-        records = []
+        user = get_or_create_user(
+            google_id=user_info["sub"],
+            email=user_info.get("email", ""),
+            name=user_info.get("name", "User"),
+            avatar_url=user_info.get("picture", ""),
+        )
+    except Exception as exc:
+        return RedirectResponse(url=f"{FRONTEND_URL}/?error=db&message={exc}", status_code=302)
 
-    return records
+    session_token = create_session_token(user["id"])
+    response = RedirectResponse(url=f"{FRONTEND_URL}/chat", status_code=302)
+    response.set_cookie(
+        key="app_session",
+        value=session_token,
+        httponly=True,
+        samesite="lax",
+        max_age=30 * 86400,
+        secure=False,
+    )
+    return response
 
-def route_and_search(user_query: str, selected_act: str = "ALL"):
-    sanitized_q = re.sub(r'[^a-zA-Z0-9\s]', '', user_query).strip()
-    sec_match = re.search(r'\b(?:section|sec)?\s*(\d+)\b', sanitized_q, re.IGNORECASE)
-    target_sec = sec_match.group(1) if sec_match else None
 
-    act_indicator = None
-    if re.search(r'\bbnss\b', sanitized_q, re.IGNORECASE):
-        act_indicator = "BNSS"
-    elif re.search(r'\bbsa\b', sanitized_q, re.IGNORECASE):
-        act_indicator = "BSA"
-    elif re.search(r'\bbns\b', sanitized_q, re.IGNORECASE):
-        act_indicator = "BNS"
+@app.post("/auth/logout")
+async def logout():
+    response = JSONResponse({"ok": True})
+    response.delete_cookie(key="app_session")
+    return response
 
-    active_target = act_indicator if act_indicator else selected_act.upper()
-    routing_map = {
-        "BNS": ["bns_fts"], 
-        "BNSS": ["bnss_fts"], 
-        "BSA": ["bsa_fts"], 
-        "ALL": ["bns_fts", "bnss_fts", "bsa_fts"]
+
+@app.get("/api/auth/session")
+async def auth_session(request: Request):
+    token = request.cookies.get("app_session")
+    user_id = decode_session_token(token) if token else None
+    if not user_id:
+        return JSONResponse({"authenticated": False}, status_code=401)
+
+    user = get_user_by_id(user_id)
+    if not user:
+        return JSONResponse({"authenticated": False}, status_code=401)
+
+    return {
+        "authenticated": True,
+        "user": {
+            "id": user_id,
+            "name": user.get("name", "User"),
+            "email": user.get("email", ""),
+            "avatar_url": user.get("avatar_url", ""),
+        },
     }
-    target_tables = routing_map.get(active_target, routing_map["ALL"])
-
-    search_results = []
-    for tbl in target_tables:
-        act_label = tbl.replace('_fts', '').upper()
-        matches = execute_fts_query(tbl, sanitized_q, target_sec)
-        for m in matches:
-            search_results.append((act_label, m[0], m[1], m[2], m[3]))
-            
-    return search_results
 
 
-# =====================================================================
-# LAYER 3: LLM-POWERED LEGAL BRIEF SYNTHESIZER
-# =====================================================================
-def generate_legal_brief(statutory_text: str) -> str:
-    """Uses Groq LLM to generate a structured brief with flexible length based on content."""
-    try:
-        prompt = f"""You are an expert legal assistant. Analyze the following Indian statutory provision text and synthesize a readable Legal Intelligence Brief. 
-
-Follow this markdown template structure, allowing your explanations and bullet points to be as detailed or brief as necessary to fully capture the provision:
-### ⚖️ Legal Intelligence Brief
-
-**Plain Language Explanation**
-[Clear summary explaining the core meaning]
-
-**Key Statutory Elements**
-- [Relevant statutory element or condition]
-
-**Statutory Exceptions**
-- [Applicable exceptions or provisos, or state "None specified."]
-
-**Penalties / Consequences**
-- [Punishments or consequences outlined]
-
-**Statutory Text**
-> [Include the exact relevant statutory text provided below]
-
-Statutory Source Text:
-{statutory_text}"""
-
-        completion = groq_client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}],
-            model=MODEL_NAME,
-            temperature=0.1,
-        )
-        return completion.choices[0].message.content
-
-    except Exception as e:
-        return f"### ⚖️ Legal Intelligence Brief\n\n**Error generating brief via LLM:** {e}\n\n**Statutory Text:**\n> {statutory_text}"
+@app.get("/api/chat/sessions")
+async def list_chat_sessions(request: Request):
+    user_id, _ = get_current_user_or_401(request)
+    sessions = get_user_sessions(user_id)
+    return {"sessions": [{"id": session_id, "title": title} for title, session_id in sessions]}
 
 
-# =====================================================================
-# LAYER 4: CONTROLLER, FALLBACK & PRESENTATION LAYER
-# =====================================================================
-def process_user_request(query_text: str, act_filter: str):
-    if not query_text.strip():
-        return "⚠️ Please provide a section number or descriptive keyword query.", ""
-    
-    filter_target = "ALL" if act_filter == "All Acts" else act_filter
-    retrieved_records = route_and_search(query_text, selected_act=filter_target)
-    
-    # CASE 1: FTS5 Exact Match Found -> Send to LLM Brief Synthesizer
-    if retrieved_records:
-        formatted_payloads = []
-        for act, section, title, chapter, text in retrieved_records:
-            formatted_payloads.append(f"📌 **[{act}] Section {section}: {title}**\n**Chapter:** {chapter}\n\n**Statutory Provisions:**\n{text}")
-        
-        combined_raw_text = "\n\n---\n\n".join(formatted_payloads)
-        synthesized_summary = generate_legal_brief(combined_raw_text)
-        return combined_raw_text, synthesized_summary
-    
-    # CASE 2: FTS5 Miss -> Groq Semantic Intelligence Fallback (Structured & Flexible Length)
-    else:
-        try:
-            prompt = f"""You are an expert Indian legal assistant specializing in the Bharatiya Nyaya Sanhita (BNS), BNSS, and BSA. 
-The user submitted a scenario or query that did not map to a single exact section keyword in the local index: "{query_text}".
+@app.get("/api/chat/sessions/{session_id}")
+async def read_chat_session(session_id: str, request: Request):
+    user_id, _ = get_current_user_or_401(request)
+    sessions = dict((sid, title) for title, sid in get_user_sessions(user_id))
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found.")
 
-Analyze this scenario under Indian criminal law and synthesize a structured Legal Intelligence Brief using your own judgment for length and depth, following this template structure:
+    messages = get_session_messages(session_id)
+    return {
+        "session": {
+            "id": session_id,
+            "title": sessions[session_id],
+            "messages": [{"role": role, "content": content} for role, content in messages],
+        }
+    }
 
-### ⚖️ Legal Intelligence Brief (Semantic Fallback)
 
-**Plain Language Explanation**
-[Explanation of the legal implications of this scenario]
+@app.post("/api/chat/sessions")
+async def create_session(request: Request):
+    user_id, _ = get_current_user_or_401(request)
+    session_id = create_chat_session(user_id, "New Legal Brief")
+    return {"session_id": session_id}
 
-**Key Statutory Elements**
-- [Relevant legal principle or likely applicable provision]
 
-**Statutory Exceptions**
-- [Any conditions or exceptions that might apply, or state "None specified."]
+@app.delete("/api/chat/sessions/{session_id}")
+async def delete_session(session_id: str, request: Request):
+    user_id, _ = get_current_user_or_401(request)
+    owned_session_ids = {sid for _, sid in get_user_sessions(user_id)}
+    if session_id not in owned_session_ids:
+        raise HTTPException(status_code=404, detail="Session not found.")
 
-**Penalties / Consequences**
-- [Legal consequences under Indian law for this scenario]
+    delete_chat_session(session_id)
+    return {"ok": True}
 
-**Statutory Guidance / Context**
-> [Provide analytical breakdown of how Indian law treats this scenario]"""
 
-            completion = groq_client.chat.completions.create(
-                messages=[{"role": "user", "content": prompt}],
-                model=MODEL_NAME,
-                temperature=0.1,
-            )
-            groq_response = completion.choices[0].message.content
-            
-            fallback_raw = "⚠️ No direct keyword match found in local SQLite FTS5 index. Query routed to Groq AI Semantic Fallback and structured."
-            return fallback_raw, groq_response
-            
-        except Exception as e:
-            return "❌ No matching provisions found locally.", f"⚠️ Fallback API Error: {e}"
+@app.post("/api/chat/query")
+async def chat_query(payload: QueryRequest, request: Request):
+    user_id, _ = get_current_user_or_401(request)
 
-custom_html_header = gr.HTML("""
-<div style="background: linear-gradient(135deg, #1e293b, #0f172a); padding: 30px; border-radius: 12px; color: white; text-align: center; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-    <h1 style="margin: 0; font-size: 2.2em; font-weight: 700; letter-spacing: -0.5px;">⚖️ Bharatiya Sanhita Legal Intelligence Suite</h1>
-    <p style="margin: 10px 0 0 0; color: #94a3b8; font-size: 1.1em;">High-speed local FTS5 legal retrieval, LLM-powered briefs & Groq AI fallback.</p>
-</div>
-""")
+    message = payload.message.strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Message cannot be empty.")
 
-with gr.Blocks(title="BNS Legal Intelligence Suite") as demo_interface:
-    custom_html_header
+    session_id = payload.session_id
+    if not session_id:
+        title = message[:50] + ("..." if len(message) > 50 else "")
+        session_id = create_chat_session(user_id, title)
 
-    with gr.Row(equal_height=True):
-        with gr.Column(scale=4):
-            user_input_box = gr.Textbox(
-                label="🔍 Statutory Search Query / Section / Scenario",
-                placeholder="e.g., 'BNS Section 34', or describe a case scenario",
-                lines=2
-            )
-        with gr.Column(scale=1):
-            act_selection_dropdown = gr.Dropdown(
-                choices=["All Acts", "BNS", "BNSS", "BSA"],
-                value="All Acts",
-                label="🏛️ Target Jurisdiction"
-            )
-            dispatch_btn = gr.Button("⚡ Query & Generate Brief", variant="primary", scale=1)
+    owned_session_ids = {sid for _, sid in get_user_sessions(user_id)}
+    if session_id not in owned_session_ids:
+        raise HTTPException(status_code=404, detail="Session not found.")
 
-    with gr.Row():
-        with gr.Column(scale=1):
-            summary_markdown_pane = gr.Markdown(
-                label="🤖 Structured Legal Brief Explanation",
-                value="*Legal brief summary will appear here after query execution...*"
-            )
-        with gr.Column(scale=1):
-            raw_text_textbox = gr.Textbox(
-                label="📂 Local FTS5 Dataset / Fallback Raw Text",
-                interactive=False,
-                lines=15
-            )
+    prior_messages = get_session_messages(session_id)
+    history = [{"role": role, "content": content} for role, content in prior_messages]
 
-    dispatch_btn.click(
-        fn=process_user_request,
-        inputs=[user_input_box, act_selection_dropdown],
-        outputs=[raw_text_textbox, summary_markdown_pane]
-    )
-    user_input_box.submit(
-        fn=process_user_request,
-        inputs=[user_input_box, act_selection_dropdown],
-        outputs=[raw_text_textbox, summary_markdown_pane]
-    )
+    save_message(session_id, user_id, "user", message)
+    if not prior_messages:
+        update_session_title(session_id, message)
+
+    filter_target = "ALL" if payload.act_filter == "All Acts" else payload.act_filter
+    retrieved = route_and_search(message, selected_act=filter_target)
+    statutory_context = build_statutory_context(retrieved)
+    response = generate_response(message, history, statutory_context)
+
+    save_message(session_id, user_id, "assistant", response)
+
+    return {
+        "session_id": session_id,
+        "message": {"role": "assistant", "content": response},
+        "retrievals": [
+            {
+                "act": act,
+                "section": section,
+                "title": title_sec,
+                "chapter": chapter,
+                "text": text,
+            }
+            for act, section, title_sec, chapter, text in retrieved
+        ],
+    }
+
 
 if __name__ == "__main__":
+    import uvicorn
+
     port = int(os.environ.get("PORT", 7860))
-    demo_interface.launch(
-        server_name="0.0.0.0", 
-        server_port=port, 
-        theme=gr.themes.Soft(), 
-        share=False,
-        show_error=True
-    )
+    uvicorn.run("app:app", host="0.0.0.0", port=port, reload=False)
