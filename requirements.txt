@@ -1,5 +1,11 @@
-gradio
 datasets
 pandas
 groq
 python-dotenv
+fastapi
+uvicorn[standard]
+authlib
+httpx
+itsdangerous
+supabase
+python-multipart

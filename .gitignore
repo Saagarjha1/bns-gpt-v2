@@ -1,0 +1,10 @@
+@"
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+statutory_search.db
+frontend/.next/
+frontend/node_modules/
+"@ | Set-Content .gitignore
